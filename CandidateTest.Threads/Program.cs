@@ -25,6 +25,8 @@ namespace CandidateTest.Threads
             Console.WriteLine("Press ESCAPE to stop the process.");
             Console.WriteLine(string.Format("RAM used: {0} MB", currentProcess.WorkingSet64 / 1024 / 1024));
 
+            Console.ReadKey();
+
             for (int i = 1; i <= 200; i++)
             {
                 WorkerProcess p = new WorkerProcess("P#" + i.ToString(), 200 + (200 / i * 2), cts);
