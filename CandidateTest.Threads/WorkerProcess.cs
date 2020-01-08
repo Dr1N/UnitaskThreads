@@ -60,7 +60,7 @@ namespace CandidateTest.Threads
                     try
                     {
                         _readWriteLock.EnterWriteLock();
-                        var fs = File.Open("..\\..\\Output\\data.txt", FileMode.Append);
+                        var fs = File.Open("Output\\data.txt", FileMode.Append);
                         Data.Add(new KeyValuePair<string, string>(ProcessName, DateTime.UtcNow.ToString() + " \t TimeOut : " + TimeOut.ToString() + " \t\t " + ProcessName + "(" + _cnt + ")" + Environment.NewLine));
                         _passedData = new UTF8Encoding(true).GetBytes(Data.LastOrDefault(x => x.Key == ProcessName).Value);
                         byte[] bytes = _passedData;
@@ -98,7 +98,7 @@ namespace CandidateTest.Threads
         {
             try
             {
-                var fs = File.Open("..\\..\\Output\\Statistics.txt", FileMode.Open);
+                var fs = File.Open("Output\\Statistics.txt", FileMode.Open);
                 var stat = Data.GroupBy(x => x.Key).OrderBy(x => x.Key);
                 _statistics = String.Format("{0,10} | {1,10}", "Process", "Count") + Environment.NewLine;
                 _statistics += new String('-', 24) + Environment.NewLine;
