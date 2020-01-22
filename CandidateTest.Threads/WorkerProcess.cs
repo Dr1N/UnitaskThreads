@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace CandidateTest.Threads
 {
@@ -12,26 +13,22 @@ namespace CandidateTest.Threads
     {
         #region Static Fields
 
-        private static readonly ReaderWriterLockSlim _dataWriteLock = new ReaderWriterLockSlim();
-        private static readonly ReaderWriterLockSlim _statisticWriteLock = new ReaderWriterLockSlim();
+        private static readonly SemaphoreSlim _semaphor = new SemaphoreSlim(1, 1);
         private static ConcurrentBag<KeyValuePair<string, string>> _data;
-        private static string _statistics;
 
         #endregion
 
         #region Events
 
         private delegate void RetryHandler(string message);
-        private event RetryHandler OnRetry;
+        private event RetryHandler OnError = delegate { };
 
         #endregion
 
         #region Fields
 
-        private readonly CancellationTokenSource _cts;
-        private bool isCompleted;
+        private readonly CancellationToken _token;
         private int _cnt = 0;
-        private byte[] _passedData;
 
         #endregion
 
@@ -59,91 +56,88 @@ namespace CandidateTest.Threads
 
         #endregion
 
-        public WorkerProcess(string processName, int timeOut, CancellationTokenSource cts)
+        #region Life
+
+        public WorkerProcess(string processName, int timeOut, CancellationToken token)
         {
             ProcessName = string.IsNullOrWhiteSpace(processName) ? "Noname Process" : processName;
             TimeOut = timeOut > 0 ? timeOut : 500;
-            _cts = cts;
-            _statistics = string.Empty;
+            _token = token;
             _cnt = 0;
+            OnError += WriteError;
         }
 
-        public void Start()
+        public static void Release()
         {
-            var mainThread = new Thread(() =>
+            _semaphor?.Dispose();
+        }
+
+        #endregion
+
+        #region Public Methods
+
+        public Task Start()
+        {
+            return Task.Run(async () =>
             {
-                while (!isCompleted)
+                while (!_token.IsCancellationRequested)
                 {
                     _cnt++;
-                    _cts.Token.Register(() =>
-                    {
-                        isCompleted = true;
-                    });
-
                     try
                     {
-                        _dataWriteLock.EnterWriteLock();
+                        await _semaphor.WaitAsync();
                         using (var fs = File.Open("Output\\data.txt", FileMode.Append))
                         {
-                            Data.Add(new KeyValuePair<string, string>(ProcessName, 
-                                DateTime.UtcNow.ToString() 
-                                + " \t TimeOut : " 
-                                + TimeOut.ToString() 
-                                + " \t\t " 
-                                + ProcessName + "(" + _cnt + ")" 
+                            Data.Add(new KeyValuePair<string, string>(
+                                ProcessName,
+                                DateTime.UtcNow.ToString()
+                                + " \t TimeOut : "
+                                + TimeOut.ToString()
+                                + " \t\t "
+                                + ProcessName + "(" + _cnt + ")"
                                 + Environment.NewLine));
-                            Console.WriteLine($"{ProcessName}: {_cnt}");
-                            var last = Data.FirstOrDefault(x => x.Key == ProcessName).Value;
-                            _passedData = new UTF8Encoding(true).GetBytes(last);
-                            byte[] bytes = _passedData;
-                            fs.Write(bytes, 0, bytes.Length);
+                            var lineForWrite = Data.FirstOrDefault(x => x.Key == ProcessName).Value;
+                            if (!string.IsNullOrEmpty(lineForWrite))
+                            {
+                                var passedData = new UTF8Encoding(true).GetBytes(lineForWrite);
+                                await fs.WriteAsync(passedData, 0, passedData.Length);
+                            }
                         }
                     }
                     catch (Exception ex)
                     {
-                        OnRetry += Retry;
-                        OnRetry(ex.Message);
+                        OnError(ex.Message);
                     }
                     finally
                     {
-                        _dataWriteLock.ExitWriteLock();
+                        _semaphor.Release();
                     }
-                    Thread.Sleep(TimeOut);
-                    var statisticsThread = new Thread(() =>
-                    {
-                        SaveStatistics();
-                    });
-                    statisticsThread.Start();
+                    await Task.Delay(TimeOut);
+                    await SaveStatisticsAsync();
                 }
             });
-
-            mainThread.Start();
         }
 
-        private static void Retry(string message)
-        {
-            Console.WriteLine(message);
-            string error = message.Trim();
-            Data.Add(new KeyValuePair<string, string>("Error", error));
-        }
-
-        public static void SaveStatistics()
+        public async static Task SaveStatisticsAsync()
         {
             try
             {
-                _statisticWriteLock.EnterWriteLock();
+                await _semaphor.WaitAsync();
+                StringBuilder sb = new StringBuilder();
                 using (var fs = File.Open("Output\\Statistics.txt", FileMode.Open))
                 {
-                    var stat = Data.GroupBy(x => x.Key).OrderBy(x => x.Key);
-                    _statistics = String.Format("{0,10} | {1,10}", "Process", "Count") + Environment.NewLine;
-                    _statistics += new String('-', 24) + Environment.NewLine;
+                    var stat = Data.GroupBy(x => x.Key).OrderBy(x => x.Key).ToList();
+                    sb.AppendFormat("{0,10} | {1,10}", "Process", "Count")
+                      .AppendLine()
+                      .AppendFormat(new string('-', 24))
+                      .AppendLine();
                     foreach (var process in stat)
                     {
-                        _statistics += String.Format("{0,10} | {1,10}", process.Key, process.Count()) + Environment.NewLine;
+                        sb.AppendFormat("{0,10} | {1,10}", process.Key, process.Count())
+                          .AppendLine();
                     }
-
-                    var toSave = new UTF8Encoding(true).GetBytes(_statistics);
-                    fs.Write(toSave, 0, toSave.Length);
+                    var toSave = new UTF8Encoding(true).GetBytes(sb.ToString());
+                    await fs.WriteAsync(toSave, 0, toSave.Length);
                 }
             }
             catch (Exception ex)
@@ -152,8 +146,21 @@ namespace CandidateTest.Threads
             }
             finally
             {
-                _statisticWriteLock.ExitWriteLock();
+                _semaphor.Release();
             }
         }
+
+        #endregion
+
+        #region Private Methods
+
+        private static void WriteError(string message)
+        {
+            Console.WriteLine(message);
+            string error = message.Trim();
+            Data.Add(new KeyValuePair<string, string>("Error", error));
+        }
+
+        #endregion
     }
 }
