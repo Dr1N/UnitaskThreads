@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -9,22 +10,40 @@ namespace CandidateTest.Threads
 {
     public class WorkerProcess
     {
-        private static ReaderWriterLockSlim _readWriteLock = new ReaderWriterLockSlim();
-        private bool isCompleted;
-        private int _cnt = 0;
+        #region Static Fields
+
+        private static readonly ReaderWriterLockSlim _readWriteLock = new ReaderWriterLockSlim();
+        private static readonly ReaderWriterLockSlim _statisticWriteLock = new ReaderWriterLockSlim();
+        private static ConcurrentBag<KeyValuePair<string, string>> _data;
         private static string _statistics;
-        private CancellationTokenSource _cts;
+
+        #endregion
+
+        #region Events
+
         private delegate void RetryHandler(string message);
         private event RetryHandler OnRetry;
+
+        #endregion
+
+        #region Fields
+
+        private readonly CancellationTokenSource _cts;
+        private bool isCompleted;
+        private int _cnt = 0;
         private byte[] _passedData;
-        private static List<KeyValuePair<string, string>> _data { get; set; }
-        public static List<KeyValuePair<string, string>> Data
+
+        #endregion
+
+        #region Properties
+
+        public static ConcurrentBag<KeyValuePair<string, string>> Data
         {
             get
             {
                 if (_data == null)
                 {
-                    _data = new List<KeyValuePair<string, string>>();
+                    _data = new ConcurrentBag<KeyValuePair<string, string>>();
                 }
                 return _data;
             }
@@ -35,7 +54,10 @@ namespace CandidateTest.Threads
         }
 
         public string ProcessName { get; }
+
         public int TimeOut { get; }
+
+        #endregion
 
         public WorkerProcess(string processName, int timeOut, CancellationTokenSource cts)
         {
@@ -57,14 +79,25 @@ namespace CandidateTest.Threads
                     {
                         isCompleted = true;
                     });
+
                     try
                     {
                         _readWriteLock.EnterWriteLock();
-                        var fs = File.Open("Output\\data.txt", FileMode.Append);
-                        Data.Add(new KeyValuePair<string, string>(ProcessName, DateTime.UtcNow.ToString() + " \t TimeOut : " + TimeOut.ToString() + " \t\t " + ProcessName + "(" + _cnt + ")" + Environment.NewLine));
-                        _passedData = new UTF8Encoding(true).GetBytes(Data.LastOrDefault(x => x.Key == ProcessName).Value);
-                        byte[] bytes = _passedData;
-                        fs.Write(bytes, 0, bytes.Length);
+                        using (var fs = File.Open("Output\\data.txt", FileMode.Append))
+                        {
+                            Data.Add(new KeyValuePair<string, string>(ProcessName, 
+                                DateTime.UtcNow.ToString() 
+                                + " \t TimeOut : " 
+                                + TimeOut.ToString() 
+                                + " \t\t " 
+                                + ProcessName + "(" + _cnt + ")" 
+                                + Environment.NewLine));
+                            Console.WriteLine($"{ProcessName}: {_cnt}");
+                            var last = Data.FirstOrDefault(x => x.Key == ProcessName).Value;
+                            _passedData = new UTF8Encoding(true).GetBytes(last);
+                            byte[] bytes = _passedData;
+                            fs.Write(bytes, 0, bytes.Length);
+                        }
                     }
                     catch (Exception ex)
                     {
@@ -98,21 +131,28 @@ namespace CandidateTest.Threads
         {
             try
             {
-                var fs = File.Open("Output\\Statistics.txt", FileMode.Open);
-                var stat = Data.GroupBy(x => x.Key).OrderBy(x => x.Key);
-                _statistics = String.Format("{0,10} | {1,10}", "Process", "Count") + Environment.NewLine;
-                _statistics += new String('-', 24) + Environment.NewLine;
-                foreach (var process in stat)
+                _statisticWriteLock.EnterWriteLock();
+                using (var fs = File.Open("Output\\Statistics.txt", FileMode.Open))
                 {
-                    _statistics += String.Format("{0,10} | {1,10}", process.Key, process.Count()) + Environment.NewLine;
-                }
+                    var stat = Data.GroupBy(x => x.Key).OrderBy(x => x.Key);
+                    _statistics = String.Format("{0,10} | {1,10}", "Process", "Count") + Environment.NewLine;
+                    _statistics += new String('-', 24) + Environment.NewLine;
+                    foreach (var process in stat)
+                    {
+                        _statistics += String.Format("{0,10} | {1,10}", process.Key, process.Count()) + Environment.NewLine;
+                    }
 
-                var toSave = new UTF8Encoding(true).GetBytes(_statistics);
-                fs.Write(toSave, 0, toSave.Length);
+                    var toSave = new UTF8Encoding(true).GetBytes(_statistics);
+                    fs.Write(toSave, 0, toSave.Length);
+                }
             }
             catch (Exception ex)
             {
                 Console.WriteLine(ex.Message);
+            }
+            finally
+            {
+                _statisticWriteLock.ExitWriteLock();
             }
         }
     }
