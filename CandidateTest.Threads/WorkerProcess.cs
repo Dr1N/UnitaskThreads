@@ -12,7 +12,7 @@ namespace CandidateTest.Threads
     {
         #region Static Fields
 
-        private static readonly ReaderWriterLockSlim _readWriteLock = new ReaderWriterLockSlim();
+        private static readonly ReaderWriterLockSlim _dataWriteLock = new ReaderWriterLockSlim();
         private static readonly ReaderWriterLockSlim _statisticWriteLock = new ReaderWriterLockSlim();
         private static ConcurrentBag<KeyValuePair<string, string>> _data;
         private static string _statistics;
@@ -82,7 +82,7 @@ namespace CandidateTest.Threads
 
                     try
                     {
-                        _readWriteLock.EnterWriteLock();
+                        _dataWriteLock.EnterWriteLock();
                         using (var fs = File.Open("Output\\data.txt", FileMode.Append))
                         {
                             Data.Add(new KeyValuePair<string, string>(ProcessName, 
@@ -106,7 +106,7 @@ namespace CandidateTest.Threads
                     }
                     finally
                     {
-                        _readWriteLock.ExitWriteLock();
+                        _dataWriteLock.ExitWriteLock();
                     }
                     Thread.Sleep(TimeOut);
                     var statisticsThread = new Thread(() =>
