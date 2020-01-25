@@ -41,9 +41,13 @@ namespace CandidateTest.Threads
 
             for (int i = 1; i <= WorkersCount; i++)
             {
-                WorkerProcess p = new WorkerProcess("P#" + i.ToString(), WorkersCount + (WorkersCount / i * 2), cts.Token);
+                var timeOut = WorkersCount + (WorkersCount / i * 2);
+                WorkerProcess p = new WorkerProcess("P#" + i.ToString(), timeOut, cts.Token);
+                Debug.WriteLine("P#" + i.ToString() + " " + timeOut);
                 p.Start();
             }
+
+            Debug.WriteLine("All Statrted");
 
             // Stop
 
@@ -58,10 +62,11 @@ namespace CandidateTest.Threads
 
                 break;
             }
-
-            Release();
+            
             Console.WriteLine("Press ANY KEY");
             Console.ReadKey();
+
+            Release();
         }
 
         #region Private Methods
