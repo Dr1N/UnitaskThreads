@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Diagnostics;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Timers;
 
 namespace CandidateTest.Threads
@@ -9,8 +10,8 @@ namespace CandidateTest.Threads
     {
         #region Constants
 
-        private const int WorkersCount = 200;
-        private const int WorkTimeInMinutes = 3;
+        private const int WorkersCount = 100;
+        private const double WorkTimeInMinutes = 0.4;
         private const int BytesInMb = 1024 * 1024;
 
         #endregion
@@ -24,47 +25,43 @@ namespace CandidateTest.Threads
 
         #endregion
 
-        private static void Main(string[] args)
+        private static void Main()
         {
             // Prepare
 
             InitTimer();
-            
-            Console.WriteLine("Should be automatically stopped at " + _timeToBeCompleted.ToShortTimeString());
-            var currentProcess = Process.GetCurrentProcess();
 
-            Console.WriteLine("Press ESCAPE to stop the process.");
-            Console.WriteLine($"RAM used: {currentProcess.WorkingSet64 / BytesInMb} MB");
-            Console.ReadKey();
+            Console.WriteLine("Should be automatically stopped at " + _timeToBeCompleted.ToShortTimeString());
+            Console.WriteLine($"RAM used: {Process.GetCurrentProcess().WorkingSet64 / BytesInMb} MB");
+            Console.WriteLine("Press any key to start workers...");
+            Console.ReadKey(true);
 
             // Start
 
+            var workers = new Task[WorkersCount];
             for (var i = 1; i <= WorkersCount; i++)
             {
                 var timeOut = WorkersCount + (WorkersCount / i * 2);
-                var p = new WorkerProcess("P#" + i.ToString(), timeOut, Cts.Token);
+                var worker = new WorkerProcess("P#" + i.ToString(), timeOut, Cts.Token);
                 Debug.WriteLine("P#" + i.ToString() + " " + timeOut);
-                p.Start();
+                workers[i - 1] = worker.Start();
             }
 
-            Debug.WriteLine("All Started");
+            Console.WriteLine($"All Started [{WorkersCount}]. End by time in {_timeToBeCompleted.ToLongTimeString()}");
 
             // Stop
 
-            while (Console.ReadKey(true).Key == ConsoleKey.Escape || _completedByTime)
+            while (!_completedByTime)
             {
-                var currentProcessExit = Process.GetCurrentProcess();
-                Console.WriteLine("----------------------Terminating Process ESCAPE...");
-                Console.WriteLine($"\r\nRAM used: {currentProcessExit.WorkingSet64 / BytesInMb} MB");
-                
-                _aTimer.Enabled = false;
-                Cts.Cancel();
-
-                break;
+                Thread.Sleep(100);
             }
-            
-            Console.WriteLine("Press ANY KEY");
-            Console.ReadKey();
+
+            Cts.Cancel();
+            Task.WaitAll(workers);
+
+            Console.WriteLine($"\r\nRAM used: {Process.GetCurrentProcess().WorkingSet64 / BytesInMb} MB");
+            Console.WriteLine("Press any key to close window");
+            Console.ReadKey(true);
 
             Release();
         }
@@ -73,11 +70,12 @@ namespace CandidateTest.Threads
 
         private static void InitTimer()
         {
-            _aTimer = new System.Timers.Timer();
-            _aTimer.Elapsed += new ElapsedEventHandler(OnTimedEvent);
-            _aTimer.Interval = 100;
-            _aTimer.Enabled = true;
-
+            _aTimer = new System.Timers.Timer()
+            {
+                Interval = 100,
+                Enabled = true,
+            };
+            _aTimer.Elapsed += OnTimedEvent;
             _timeToBeCompleted = DateTime.Now.AddMinutes(WorkTimeInMinutes);
         }
 
@@ -95,11 +93,10 @@ namespace CandidateTest.Threads
         private static void OnTimedEvent(object source, ElapsedEventArgs e)
         {
             if (_timeToBeCompleted > DateTime.Now) return;
-            var currentProcessExit = Process.GetCurrentProcess();
-            Console.WriteLine("----------------------Terminating Process by time...");
-            Console.WriteLine($"\r\nRAM used: {currentProcessExit.WorkingSet64 / BytesInMb} MB");
-            _aTimer.Enabled = false;
             _completedByTime = true;
+            _aTimer.Enabled = false;
+            Console.WriteLine("----------------------Terminating Process by time...");
+            Console.WriteLine($"\r\nRAM used: {Process.GetCurrentProcess().WorkingSet64 / BytesInMb} MB");
         }
 
         #endregion
