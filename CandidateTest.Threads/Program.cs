@@ -31,13 +31,13 @@ namespace CandidateTest.Threads
 
             InitTimer();
 
-            Console.WriteLine("Should be automatically stopped at " + _timeToBeCompleted.ToShortTimeString());
             Console.WriteLine($"RAM used: {Process.GetCurrentProcess().WorkingSet64 / BytesInMb} MB");
             Console.WriteLine("Press any key to start workers...");
             Console.ReadKey(true);
 
             // Start
 
+            _timeToBeCompleted = DateTime.Now.AddMinutes(WorkTimeInMinutes);
             var workers = new Task[WorkersCount];
             for (var i = 1; i <= WorkersCount; i++)
             {
@@ -47,14 +47,16 @@ namespace CandidateTest.Threads
                 workers[i - 1] = worker.Start();
             }
 
-            Console.WriteLine($"All Started [{WorkersCount}]. End by time in {_timeToBeCompleted.ToLongTimeString()}");
+            Console.WriteLine($"All workers started [{WorkersCount}]\nShould be automatically stopped at {_timeToBeCompleted.ToLongTimeString()}");
 
-            // Stop
+            // Wait
 
             while (!_completedByTime)
             {
                 Thread.Sleep(100);
             }
+
+            // Stop
 
             Cts.Cancel();
             Task.WaitAll(workers);
@@ -76,7 +78,6 @@ namespace CandidateTest.Threads
                 Enabled = true,
             };
             _aTimer.Elapsed += OnTimedEvent;
-            _timeToBeCompleted = DateTime.Now.AddMinutes(WorkTimeInMinutes);
         }
 
         private static void Release()

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -32,7 +33,7 @@ namespace CandidateTest.Threads
 
         public WorkerProcess(string processName, int timeOut, CancellationToken token)
         {
-            ProcessName = string.IsNullOrWhiteSpace(processName) ? "Noname Process" : processName;
+            ProcessName = string.IsNullOrWhiteSpace(processName) ? "Nameless Process" : processName;
             TimeOut = timeOut > 0 ? timeOut : 500;
             _token = token;
             _cnt = 0;
@@ -107,8 +108,15 @@ namespace CandidateTest.Threads
 
         private void WriteError(string message)
         {
-            Console.WriteLine(message);
-            Data.Add(new KeyValuePair<string, string>("Error", message.Trim()));
+            try
+            {
+                Console.WriteLine(message);
+                Data.Add(new KeyValuePair<string, string>("Error", message.Trim()));
+            }
+            catch(Exception e)
+            {
+                Debug.WriteLine($"Write error: {e.Message}");
+            }
         }
     }
 }
