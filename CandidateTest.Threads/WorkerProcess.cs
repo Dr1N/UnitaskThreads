@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -11,52 +12,24 @@ namespace CandidateTest.Threads
 {
     public class WorkerProcess
     {
-        #region Static Fields
-
-        private static readonly SemaphoreSlim _semaphor = new SemaphoreSlim(1, 1);
+        private static readonly SemaphoreSlim Semaphore = new SemaphoreSlim(1, 1);
         private static ConcurrentBag<KeyValuePair<string, string>> _data;
-
-        #endregion
-
-        #region Events
 
         private delegate void RetryHandler(string message);
         private event RetryHandler OnError = delegate { };
 
-        #endregion
-
-        #region Fields
-
         private readonly CancellationToken _token;
         private int _cnt = 0;
 
-        #endregion
-
-        #region Properties
-
-        public static ConcurrentBag<KeyValuePair<string, string>> Data
+        private static ConcurrentBag<KeyValuePair<string, string>> Data
         {
-            get
-            {
-                if (_data == null)
-                {
-                    _data = new ConcurrentBag<KeyValuePair<string, string>>();
-                }
-                return _data;
-            }
-            set
-            {
-                _data = value;
-            }
+            get => _data ??= new ConcurrentBag<KeyValuePair<string, string>>();
+            set => _data = value;
         }
 
-        public string ProcessName { get; }
+        private string ProcessName { get; }
 
-        public int TimeOut { get; }
-
-        #endregion
-
-        #region Life
+        private int TimeOut { get; }
 
         public WorkerProcess(string processName, int timeOut, CancellationToken token)
         {
@@ -69,12 +42,8 @@ namespace CandidateTest.Threads
 
         public static void Release()
         {
-            _semaphor?.Dispose();
+            Semaphore?.Dispose();
         }
-
-        #endregion
-
-        #region Public Methods
 
         public Task Start()
         {
@@ -85,23 +54,21 @@ namespace CandidateTest.Threads
                     _cnt++;
                     try
                     {
-                        await _semaphor.WaitAsync();
-                        using (var fs = File.Open("Output\\data.txt", FileMode.Append))
+                        await Semaphore.WaitAsync(_token);
+                        using var fs = File.Open("Output\\data.txt", FileMode.Append);
+                        Data.Add(new KeyValuePair<string, string>(
+                            ProcessName,
+                            DateTime.UtcNow.ToString(CultureInfo.InvariantCulture)
+                            + " \t TimeOut : "
+                            + TimeOut.ToString()
+                            + " \t\t "
+                            + ProcessName + "(" + _cnt + ")"
+                            + Environment.NewLine));
+                        var lineForWrite = Data.FirstOrDefault(x => x.Key == ProcessName).Value;
+                        if (!string.IsNullOrEmpty(lineForWrite))
                         {
-                            Data.Add(new KeyValuePair<string, string>(
-                                ProcessName,
-                                DateTime.UtcNow.ToString()
-                                + " \t TimeOut : "
-                                + TimeOut.ToString()
-                                + " \t\t "
-                                + ProcessName + "(" + _cnt + ")"
-                                + Environment.NewLine));
-                            var lineForWrite = Data.FirstOrDefault(x => x.Key == ProcessName).Value;
-                            if (!string.IsNullOrEmpty(lineForWrite))
-                            {
-                                var passedData = new UTF8Encoding(true).GetBytes(lineForWrite);
-                                await fs.WriteAsync(passedData, 0, passedData.Length);
-                            }
+                            var passedData = new UTF8Encoding(true).GetBytes(lineForWrite);
+                            await fs.WriteAsync(passedData, 0, passedData.Length, _token);
                         }
                     }
                     catch (Exception ex)
@@ -110,35 +77,33 @@ namespace CandidateTest.Threads
                     }
                     finally
                     {
-                        _semaphor.Release();
+                        Semaphore.Release();
                     }
-                    await Task.Delay(TimeOut);
+                    await Task.Delay(TimeOut, _token);
                     await SaveStatisticsAsync();
                 }
-            });
+            }, _token);
         }
 
-        public async static Task SaveStatisticsAsync()
+        private static async Task SaveStatisticsAsync()
         {
             try
             {
-                await _semaphor.WaitAsync();
-                StringBuilder sb = new StringBuilder();
-                using (var fs = File.Open("Output\\Statistics.txt", FileMode.Open))
+                await Semaphore.WaitAsync();
+                var sb = new StringBuilder();
+                using var fs = File.Open("Output\\Statistics.txt", FileMode.Open);
+                var stat = Data.GroupBy(x => x.Key).OrderBy(x => x.Key).ToList();
+                sb.AppendFormat("{0,10} | {1,10}", "Process", "Count")
+                    .AppendLine()
+                    .AppendFormat(new string('-', 24))
+                    .AppendLine();
+                foreach (var process in stat)
                 {
-                    var stat = Data.GroupBy(x => x.Key).OrderBy(x => x.Key).ToList();
-                    sb.AppendFormat("{0,10} | {1,10}", "Process", "Count")
-                      .AppendLine()
-                      .AppendFormat(new string('-', 24))
-                      .AppendLine();
-                    foreach (var process in stat)
-                    {
-                        sb.AppendFormat("{0,10} | {1,10}", process.Key, process.Count())
-                          .AppendLine();
-                    }
-                    var toSave = new UTF8Encoding(true).GetBytes(sb.ToString());
-                    await fs.WriteAsync(toSave, 0, toSave.Length);
+                    sb.AppendFormat("{0,10} | {1,10}", process.Key, process.Count())
+                        .AppendLine();
                 }
+                var toSave = new UTF8Encoding(true).GetBytes(sb.ToString());
+                await fs.WriteAsync(toSave, 0, toSave.Length);
             }
             catch (Exception ex)
             {
@@ -146,21 +111,15 @@ namespace CandidateTest.Threads
             }
             finally
             {
-                _semaphor.Release();
+                Semaphore.Release();
             }
         }
 
-        #endregion
-
-        #region Private Methods
-
-        private static void WriteError(string message)
+        private void WriteError(string message)
         {
             Console.WriteLine(message);
-            string error = message.Trim();
+            var error = message.Trim();
             Data.Add(new KeyValuePair<string, string>("Error", error));
         }
-
-        #endregion
     }
 }
