@@ -54,7 +54,7 @@ namespace CandidateTest.Threads
                             ProcessName,
                             DateTime.UtcNow.ToString(CultureInfo.InvariantCulture)
                             + " \t TimeOut : "
-                            + TimeOut.ToString()
+                            + TimeOut
                             + " \t\t "
                             + ProcessName + "(" + _cnt + ")"
                             + Environment.NewLine));
@@ -91,7 +91,10 @@ namespace CandidateTest.Threads
         {
             var sb = new StringBuilder();
             using var fs = File.Open("Output\\Statistics.txt", FileMode.Open, FileAccess.Write);
-            var stat = Data.GroupBy(x => x.Key).OrderBy(x => x.Key).ToList();
+            var stat = Data
+                .GroupBy(x => x.Key)
+                .OrderBy(x => x.Key)
+                .ToList();
             sb.AppendFormat("{0,10} | {1,10}", "Process", "Count")
                 .AppendLine()
                 .AppendFormat(new string('-', 24))
@@ -105,7 +108,7 @@ namespace CandidateTest.Threads
             await fs.WriteAsync(toSave, 0, toSave.Length).ConfigureAwait(false);
         }
 
-        private void WriteError(string message)
+        private static void WriteError(string message)
         {
             try
             {
