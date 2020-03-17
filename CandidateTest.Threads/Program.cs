@@ -8,22 +8,14 @@ namespace CandidateTest.Threads
 {
     internal static class Program
     {
-        #region Constants
-
         private const int WorkersCount = 100;
         private const double WorkTimeInMinutes = 0.4;
         private const int BytesInMb = 1024 * 1024;
-
-        #endregion
-
-        #region Fields
 
         private static readonly CancellationTokenSource Cts = new CancellationTokenSource();
         private static DateTime _timeToBeCompleted;
         private static bool _completedByTime;
         private static System.Timers.Timer _aTimer;
-
-        #endregion
 
         private static void Main()
         {
@@ -68,8 +60,6 @@ namespace CandidateTest.Threads
             Release();
         }
 
-        #region Private Methods
-
         private static void InitTimer()
         {
             _aTimer = new System.Timers.Timer()
@@ -86,11 +76,7 @@ namespace CandidateTest.Threads
             _aTimer?.Dispose();
             WorkerProcess.Release();
         }
-
-        #endregion
-
-        #region Callbacks
-
+        
         private static void OnTimedEvent(object source, ElapsedEventArgs e)
         {
             if (_timeToBeCompleted > DateTime.Now) return;
@@ -99,7 +85,5 @@ namespace CandidateTest.Threads
             Console.WriteLine("----------------------Terminating Process by time...");
             Console.WriteLine($"\r\nRAM used: {Process.GetCurrentProcess().WorkingSet64 / BytesInMb} MB");
         }
-
-        #endregion
     }
 }

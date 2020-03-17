@@ -19,13 +19,9 @@ namespace CandidateTest.Threads
         private event Action<string> OnError = delegate { };
 
         private readonly CancellationToken _token;
-        private int _cnt = 0;
+        private int _cnt;
 
-        private static ConcurrentBag<KeyValuePair<string, string>> Data
-        {
-            get => _data ??= new ConcurrentBag<KeyValuePair<string, string>>();
-            set => _data = value;
-        }
+        private static ConcurrentBag<KeyValuePair<string, string>> Data => _data ??= new ConcurrentBag<KeyValuePair<string, string>>();
 
         private string ProcessName { get; }
 
@@ -68,8 +64,10 @@ namespace CandidateTest.Threads
                             try
                             {
                                 var passedData = new UTF8Encoding(true).GetBytes(lineForWrite);
+                                // ReSharper disable once MethodSupportsCancellation
                                 await Semaphore.WaitAsync().ConfigureAwait(false);
                                 using var fs = File.Open("Output\\data.txt", FileMode.Append, FileAccess.Write);
+                                // ReSharper disable once MethodSupportsCancellation
                                 await fs.WriteAsync(passedData, 0, passedData.Length).ConfigureAwait(false);
                                 await SaveStatisticsAsync().ConfigureAwait(false);
                             }
@@ -78,6 +76,7 @@ namespace CandidateTest.Threads
                                 Semaphore.Release();
                             }
                         }
+                        // ReSharper disable once MethodSupportsCancellation
                         await Task.Delay(TimeOut).ConfigureAwait(false);
                     }
                     catch (Exception ex)
